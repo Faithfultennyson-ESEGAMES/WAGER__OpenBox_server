@@ -5,7 +5,8 @@
   const sessionId = String(params.get('sessionId') || '').trim();
   const playerId = String(params.get('playerId') || '').trim();
   const playerName = normalizePlayerName(params.get('playerName'));
-  const wsUrl = String(params.get('ws') || '').trim();
+  const wsParam = String(params.get('ws') || '').trim();
+  const wsUrl = wsParam || deriveWsUrl(joinUrl);
   const joinIntentUrl = deriveJoinIntentUrl(joinUrl, sessionId);
   const isLowEnd = (navigator.hardwareConcurrency || 4) <= 4;
 
@@ -21,6 +22,7 @@
     playerAv: document.getElementById('playerAv'),
     playerName: document.getElementById('playerName'),
     playerStake: document.getElementById('playerStake'),
+    muteBtn: document.getElementById('muteBtn'),
     sessionCtrTxt: document.getElementById('sessionCtrTxt'),
     stTitle: document.getElementById('stTitle'),
     stSub: document.getElementById('stSub'),
@@ -72,6 +74,7 @@
   const G_BLUE = 'background:linear-gradient(135deg,var(--blue-dim),#9999cc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 .125rem .5rem rgba(0,0,0,.85));';
   const G_RED = 'background:linear-gradient(135deg,var(--red-bright),#cc2222);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 .125rem .5rem rgba(0,0,0,.85));';
   const viewportFit = { scale: 1, rafId: 0 };
+  const audio = window.OpenBoxAudio;
   const timerState = { rafId: 0, theme: 'gold', label: 'Swap' };
   const timeouts = [];
   const intervals = [];
@@ -129,7 +132,7 @@
     },
     connect() {
       clearTimeout(_reconnectTimer);
-      if (!joinUrl || !sessionId || !playerId || !playerName || !wsUrl) {
+      if (!joinUrl || !sessionId || !playerId || !playerName) {
         handleFatalError('Missing required launch values.');
         return;
       }
@@ -404,8 +407,7 @@
       ['joinUrl', joinUrl],
       ['sessionId', sessionId],
       ['playerId', playerId],
-      ['playerName', playerName],
-      ['ws', wsUrl]
+      ['playerName', playerName]
     ];
 
     return fields
@@ -528,32 +530,34 @@
   }
 
   function applyViewportFit() {
-    const vv = window.visualViewport;
-    const vw = vv ? vv.width : window.innerWidth;
-    const vh = vv ? vv.height : window.innerHeight;
-    const stageStyles = getComputedStyle(els.shellStage);
-    const padX = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight);
-    const padY = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom);
-    const availableWidth = Math.max(0, vw - padX);
-    const availableHeight = Math.max(0, vh - padY);
-    const deviceWidth = els.phone.offsetWidth || 390;
-    const deviceHeight = els.phone.offsetHeight || 760;
-    const scale = Math.min(1, availableWidth / deviceWidth, availableHeight / deviceHeight) || 1;
-    viewportFit.scale = scale;
-    els.shellFit.style.width = `${deviceWidth * scale}px`;
-    els.shellFit.style.height = `${deviceHeight * scale}px`;
-    els.phone.style.transform = `scale(${scale})`;
+    viewportFit.scale = 1;
+    els.shellFit.style.removeProperty('width');
+    els.shellFit.style.removeProperty('height');
+    els.phone.style.removeProperty('transform');
+
+    if (layout && els.arena.offsetWidth && els.arena.offsetHeight) {
+      computeLayout();
+      if (els.playerBox.classList.contains('stage-idle') || els.playerBox.classList.contains('waiting') || els.playerBox.classList.contains('locked')) {
+        snapTo(els.playerBox, layout.stageL, layout.stageT);
+        setStageGlowPos();
+      }
+    }
+  }
+
+  function getRemPixels() {
+    return Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   }
 
   function computeLayout() {
     if (!els.arena || !els.trackWrap || !els.trackSvg || !els.trackCalcPath) {
       throw new Error('Layout bootstrap failed: arena, trackWrap, trackSvg, or trackCalcPath is missing.');
     }
-    const arenaWidth = els.arena.offsetWidth / 16;
-    const arenaHeight = els.arena.offsetHeight / 16;
-    const trackHeight = els.trackSvg.offsetHeight / 16;
-    const trackY = (els.arena.offsetHeight - els.trackWrap.offsetHeight) / 16;
-    const playerHalfBox = 3;
+    const remPixels = getRemPixels();
+    const arenaWidth = els.arena.offsetWidth / remPixels;
+    const arenaHeight = els.arena.offsetHeight / remPixels;
+    const trackHeight = els.trackSvg.offsetHeight / remPixels;
+    const trackY = (els.arena.offsetHeight - els.trackWrap.offsetHeight) / remPixels;
+    const playerHalfBox = (els.playerBox.offsetWidth / remPixels) / 2;
     const pathLength = els.trackCalcPath.getTotalLength();
     const ptAt = (t) => {
       const point = els.trackCalcPath.getPointAtLength(t * pathLength);
@@ -840,9 +844,6 @@
     hydrateVisibleContainers(0);
   }
 
-  const CARD_WIDTH = 13.625;
-  const CARD_GAP = 1;
-  const CARD_STEP = CARD_WIDTH + CARD_GAP;
   const VISIBLE_RADIUS = 1;
 
   function hydrateVisibleContainers(current) {
@@ -867,10 +868,17 @@
   }
 
   function scrollCarousel(index) {
+    audio?.playContainerMove();
     els.progFill.style.width = `${((index + 1) / containers.length) * 100}%`;
     els.progLabel.textContent = `Scanning container ${containers[index].label} of ${containers.length}\u2026`;
-    const phoneHalfWidth = (els.phone.offsetWidth / 16) / 2;
-    const offset = -(index * CARD_STEP) + (phoneHalfWidth - CARD_WIDTH / 2 - 5.375);
+    const remPixels = getRemPixels();
+    const card = document.getElementById(`ctn-${index}`);
+    const trackStyles = getComputedStyle(els.carouselTrack);
+    const cardWidth = (card?.offsetWidth || 218) / remPixels;
+    const cardGap = Number.parseFloat(trackStyles.columnGap || trackStyles.gap) / remPixels || 1;
+    const trackPaddingLeft = Number.parseFloat(trackStyles.paddingLeft) / remPixels || 0;
+    const phoneHalfWidth = (els.phone.offsetWidth / remPixels) / 2;
+    const offset = -(index * (cardWidth + cardGap)) + (phoneHalfWidth - cardWidth / 2 - trackPaddingLeft);
     els.carouselTrack.style.transform = `translateX(${offset}rem)`;
     hydrateVisibleContainers(index);
 
@@ -922,9 +930,10 @@
     const arenaBox = els.arena.getBoundingClientRect();
     const miniBoxRect = miniBox.getBoundingClientRect();
     const scale = viewportFit.scale || 1;
-    const fromLeft = (miniBoxRect.left - arenaBox.left) / (16 * scale);
-    const fromTop = (miniBoxRect.top - arenaBox.top) / (16 * scale);
-    const fromSize = miniBoxRect.width / (16 * scale);
+    const remPixels = getRemPixels();
+    const fromLeft = (miniBoxRect.left - arenaBox.left) / (remPixels * scale);
+    const fromTop = (miniBoxRect.top - arenaBox.top) / (remPixels * scale);
+    const fromSize = miniBoxRect.width / (remPixels * scale);
     miniBox.style.opacity = '0';
     showYBL(fromLeft + fromSize / 2 - layout.PBH, fromTop);
     resetBoxClasses();
@@ -938,9 +947,11 @@
     showPlayerBox(true);
     later(() => {
       hideYBL();
+      audio?.playBoxTravel();
       els.playerBox.style.transition = 'transform 540ms cubic-bezier(0.45,0,0.55,1)';
       els.playerBox.style.transform = 'translate(0,0) scale(1)';
       later(() => {
+        audio?.playBoxLand();
         els.playerBox.style.transition = '';
         els.playerBox.style.transform = '';
         els.playerBox.classList.add('stage-idle');
@@ -1229,6 +1240,7 @@
   }
 
   function enterWin(data) {
+    audio?.play('win', { duckMusic: true });
     els.winAmount.textContent = data.prize > 0 ? `\u20A6${Number(data.prize).toLocaleString()}` : '\u20A60';
     els.winDetail.textContent = `Box ${data.finalBox} \u00B7 Your prize`;
     spawnConfetti();
@@ -1236,6 +1248,7 @@
   }
 
   function enterLose(data) {
+    audio?.play('lose', { duckMusic: true });
     els.loseDetail.textContent = `Box ${data.finalBox} was empty`;
     countdown(els.loseSecs, 5, () => goTo('s-lb'));
   }
@@ -1354,10 +1367,30 @@
     bus.send('ready_up', { playerId });
   });
 
+  function syncMuteButton() {
+    if (!els.muteBtn || !audio) return;
+    const muted = audio.muted;
+    els.muteBtn.textContent = muted ? '\u{1F507}' : '\u{1F50A}';
+    els.muteBtn.classList.toggle('is-muted', muted);
+    els.muteBtn.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+    els.muteBtn.title = muted ? 'Unmute sound' : 'Mute sound';
+  }
+
+  els.muteBtn?.addEventListener('click', () => {
+    audio?.toggleMuted();
+    syncMuteButton();
+  });
+
+  window.addEventListener('openboxaudiochange', syncMuteButton);
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.ready-btn, .btn-swap, .btn-next, .mute-btn')) audio?.playClick();
+  }, { passive: true });
+
   window.addEventListener('load', () => {
     if (!validateRequiredElements()) return;
     if (!validateBootstrapData()) return;
     scheduleViewportFit();
+    syncMuteButton();
     showReadyOverlay();
     bus.connect();
   }, { once: true });

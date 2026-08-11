@@ -85,7 +85,7 @@ export const config = {
   matchmakingServiceUrl: process.env.MATCHMAKING_SERVICE_URL || '',
   devWaitForAllPlayers: toBool(process.env.DEV_WAIT_FOR_ALL_PLAYERS, false),
   firstJoinTimeoutMs: toInt(process.env.FIRST_JOIN_TIMEOUT_MS, 30000),
-  readyCheckTimeoutMs: resolveTiming('READY_CHECK_TIMEOUT_MS', 'READY_TIMEOUT_MS', 10000),
+  readyCheckTimeoutMs: resolveTiming('READY_CHECK_TIMEOUT_MS', 'READY_TIMEOUT_MS', 5000),
   distributionLeadMs: resolveTiming('DISTRIBUTION_LEAD_MS', 'DISTRIBUTION_BUFFER_MS', 5200),
   swapPhaseMs: resolveDurationMsFromSeconds('SWAP_PHASE_MS', 'SWAP_WINDOW_SECONDS', 20000),
   swapSoftLockPercent: resolveTiming('SWAP_SOFT_LOCK_PERCENT', 'SOFTLOCK_PERCENT', 30),

@@ -22,6 +22,14 @@ function setNoStoreHeaders(res) {
   res.setHeader('Surrogate-Control', 'no-store');
 }
 
+function setStaticHeaders(res, filePath) {
+  if (/\.(?:mp3|ogg|wav|m4a|aac)$/i.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    return;
+  }
+  setNoStoreHeaders(res);
+}
+
 function isAllowedOrigin(requestOrigin) {
   if (!requestOrigin) return true;
   if (!config.clientOrigins.length) return true;
@@ -62,7 +70,7 @@ app.use(
   express.static(clientRoot, {
     etag: false,
     lastModified: false,
-    setHeaders: setNoStoreHeaders
+    setHeaders: setStaticHeaders
   })
 );
 app.use(routes);
