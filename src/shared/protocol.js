@@ -42,7 +42,8 @@ export const ClientMessageType = Object.freeze({
   SWAP_REQUEST: 'swap_request',
   KEEP_BOX: 'keep_box',
   TIMER_END: 'timer_end',
-  LEADERBOARD_REQUEST: 'leaderboard_request'
+  LEADERBOARD_REQUEST: 'leaderboard_request',
+  TIME_SYNC: 'time_sync'
 });
 
 export const ServerMessageType = Object.freeze({
@@ -55,7 +56,8 @@ export const ServerMessageType = Object.freeze({
   ROUND_RESULT: 'round_result',
   LEADERBOARD_DATA: 'leaderboard_data',
   ERROR: 'error',
-  PING: 'ping'
+  PING: 'ping',
+  TIME_SYNC_ACK: 'time_sync_ack'
 });
 
 export const WebhookEventType = Object.freeze({

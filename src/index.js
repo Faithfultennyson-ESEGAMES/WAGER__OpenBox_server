@@ -9,7 +9,7 @@ import redisStore from './store/redisStore.js';
 import sessionRegistry from './runtime/sessionRegistry.js';
 import routes from './http/routes.js';
 import { ClientMessageType, ServerMessageType } from './shared/protocol.js';
-import { sendError } from './ws/wsProtocol.js';
+import { send, sendError } from './ws/wsProtocol.js';
 import { initWebhookDispatcher } from './webhooks/dispatcher.js';
 
 const app = express();
@@ -103,6 +103,14 @@ wss.on('connection', async (ws, req) => {
         message = JSON.parse(raw.toString());
       } catch {
         sendError(ws, 'BAD_JSON', 'Invalid JSON');
+        return;
+      }
+
+      if (message.type === ClientMessageType.TIME_SYNC) {
+        send(ws, ServerMessageType.TIME_SYNC_ACK, {
+          clientSentAt: message.clientSentAt,
+          serverTime: Date.now()
+        });
         return;
       }
 

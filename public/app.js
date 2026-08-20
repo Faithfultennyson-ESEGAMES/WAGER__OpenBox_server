@@ -106,6 +106,10 @@
   let _joinIntentRetryTimer = null;
   let _roundSettled = false;
   let _sessionEndedReason = '';
+  let _clockOffsetMs = 0;
+  let _clockSyncBestRtt = Infinity;
+  let _clockSyncSamplesLeft = 0;
+  let _clockSyncSentAt = 0;
   let swapSecs = 10;
   let swapWindowTotal = 10;
   let swapPhase = 'idle';
@@ -139,6 +143,7 @@
       _ws = new WebSocket(wsUrl);
       _ws.addEventListener('open', () => {
         this.send('hello', { sessionId, playerId, playerName });
+        startClockSync();
       });
       _ws.addEventListener('message', (event) => {
         let message;
@@ -194,12 +199,42 @@
         case 'error':
           this.emit('error', message);
           break;
+        case 'time_sync_ack':
+          handleTimeSyncAck(message);
+          break;
         default:
           break;
       }
     },
     reset() {}
   };
+
+  function now() {
+    return Date.now() + _clockOffsetMs;
+  }
+
+  function startClockSync() {
+    _clockSyncBestRtt = Infinity;
+    _clockSyncSamplesLeft = 3;
+    sendClockSyncSample();
+  }
+
+  function sendClockSyncSample() {
+    if (_clockSyncSamplesLeft <= 0) return;
+    _clockSyncSentAt = Date.now();
+    bus.send('time_sync', { clientSentAt: _clockSyncSentAt });
+  }
+
+  function handleTimeSyncAck(message) {
+    const receivedAt = Date.now();
+    const rtt = receivedAt - _clockSyncSentAt;
+    if (rtt < _clockSyncBestRtt) {
+      _clockSyncBestRtt = rtt;
+      _clockOffsetMs = Number(message.serverTime || 0) + rtt / 2 - receivedAt;
+    }
+    _clockSyncSamplesLeft -= 1;
+    if (_clockSyncSamplesLeft > 0) sendClockSyncSample();
+  }
 
   function parseSessionId(url) {
     if (!url) return '';
@@ -337,7 +372,7 @@
     if (_readyTicker) return;
     _readyTicker = setInterval(() => {
       if (!_readyDeadline) return;
-      const remaining = Math.max(0, Math.ceil((_readyDeadline - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.ceil((_readyDeadline - now()) / 1000));
       els.readyTimer.textContent = String(remaining);
     }, 250);
   }
@@ -376,7 +411,7 @@
       : 'Click Ready before the countdown expires.';
 
     const remaining = _readyDeadline
-      ? Math.max(0, Math.ceil((_readyDeadline - Date.now()) / 1000))
+      ? Math.max(0, Math.ceil((_readyDeadline - now()) / 1000))
       : 0;
     els.readyTimer.textContent = String(remaining);
   }
@@ -696,7 +731,7 @@
     if (!Number.isFinite(endsAt) || endsAt <= 0) {
       return Math.max(0, swapSecs * 1000);
     }
-    return Math.max(0, endsAt - Date.now());
+    return Math.max(0, endsAt - now());
   }
 
   function getCurrentSwapSeconds() {
